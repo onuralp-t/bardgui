@@ -1,0 +1,7 @@
+[
+  {
+    "bindings": {
+      "ctrl-b": ["task::Spawn", { "task_name": "Build" }]
+    }
+  }
+]
