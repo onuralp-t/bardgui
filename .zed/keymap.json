@@ -1,7 +1,8 @@
 [
   {
+    "context": "Workspace",
     "bindings": {
-      "ctrl-b": ["task::Spawn", { "task_name": "Build" }]
+      "ctrl-b": ["task::Spawn", { "task_name": "Build" }],
     }
   }
 ]
