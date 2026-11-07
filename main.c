@@ -1,76 +1,158 @@
-#include <float.h>    // Floating-point limits and characteristics
-#include <limits.h>   // Sizes and limits of basic integer types
-#include <stdarg.h>   // Variable argument lists (va_list, va_start, va_arg, va_end)
-#include <stddef.h>   // size_t, ptrdiff_t, NULL, offsetof, max_align_t, nullptr_t
-#include <stdint.h>   // Exact-width integer types (uint8_t, int32_t, uintptr_t, etc.)
-#include <stdalign.h> // alignas and alignof convenience macros
+#include <float.h>
+#include <limits.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdalign.h>
 
 #include "SDL3/SDL.h" // IWYU pragma: keep
 
-uint64_t bard_strlen(const char *str) {
-    uint64_t length = 0;
-    while (str[length] != '\0') {length++;}
-    return length;
+static struct {
+    SDL_Renderer *renderer;
+    SDL_Window *window;
+    const bool *kb_state;
+    uint32_t window_width;
+    uint32_t window_height;
+
+    uint64_t target_fps_ns;
+    uint64_t current_time_ns;
+    uint64_t previous_time_ns;
+    float dt;
+
+    bool window_should_close;
+} global;
+
+#define BARD_WRAP static inline
+
+BARD_WRAP void bard_init_window(uint32_t window, uint32_t height, const char* screen_title) {
+    global.window_width = window;
+    global.window_height = height;
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
+        SDL_Quit();
+    }
+
+    if (!SDL_CreateWindowAndRenderer(screen_title, window, height, 0, &global.window, &global.renderer)) {
+        SDL_Log("Failed to create window+renderer: %s", SDL_GetError());
+        SDL_Quit();
+    }
+    global.kb_state = SDL_GetKeyboardState(NULL);
+    global.target_fps_ns = (uint64_t)(1000000000.0 / 60.f); // aim for 60fps by default
+    global.previous_time_ns = SDL_GetTicksNS();
+}
+
+BARD_WRAP void bard_target_fps(float target_fps) {
+    global.target_fps_ns = (uint64_t)(1000000000.0 / target_fps);
+    global.previous_time_ns = SDL_GetTicksNS();
+}
+
+BARD_WRAP float bard_dt() {
+    return global.dt;
+}
+
+BARD_WRAP bool bard_window_should_close() {
+    global.current_time_ns = SDL_GetTicksNS();
+    global.dt = (float)(global.current_time_ns - global.previous_time_ns) / 1e9f;
+    if (global.dt > 0.1f) {
+        global.dt = 0.1f;
+    }
+    global.previous_time_ns = global.current_time_ns;
+    // idk if it's bad to put these dt calculations to here
+    // maybe dt calc should happen in begin_drawing, but what if user asks for dt before that? (like I did)
+    return global.window_should_close;
+}
+
+BARD_WRAP void bard_quit_next_frame() {
+    global.window_should_close = true;
+}
+
+BARD_WRAP void bard_clear_window() {
+    SDL_SetRenderDrawColor(global.renderer, 0, 0, 0, 255);
+    SDL_RenderClear(global.renderer);
+}
+
+BARD_WRAP void bard_begin_drawing() {
+    SDL_SetRenderScale(global.renderer, 1.0f, 1.0f);
+    SDL_SetRenderDrawColor(global.renderer, 0, 0, 0, 255);
+}
+
+BARD_WRAP void bard_draw_rectangle(SDL_FRect rect, SDL_Color color) {
+    SDL_SetRenderDrawColor(global.renderer, color.r, color.g, color.b, color.a);
+    SDL_RenderRect(global.renderer, &rect);
+}
+
+BARD_WRAP void bard_end_drawing() {
+    SDL_RenderPresent(global.renderer);
+
+    uint64_t frame_duration_ns = SDL_GetTicksNS() - global.current_time_ns;
+    if (frame_duration_ns < global.target_fps_ns) {
+        SDL_DelayPrecise(global.target_fps_ns - frame_duration_ns);
+    }
+}
+
+BARD_WRAP void bard_close_window() {
+    SDL_DestroyRenderer(global.renderer);
+    SDL_DestroyWindow(global.window);
+    SDL_Quit();
 }
 
 int main()
 {
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
-        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
-        return 1;
-    }
-
-    constexpr uint64_t WINDOW_WIDTH = 800u;
-    constexpr uint64_t WINDOW_HEIGHT = 600u;
-
-    SDL_Window *window = NULL;
-    SDL_Renderer *renderer = NULL;
-
-    if (!SDL_CreateWindowAndRenderer("Hello SDL3", WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer)) {
-        SDL_Log("Failed to create window+renderer: %s", SDL_GetError());
-        SDL_Quit();
-        return 1;
-    }
-
-    bool is_running = true;
+    bard_init_window(800, 600, "Hello SDL3");
     SDL_Event event = {0};
 
-    while (is_running) {
+    struct {
+        SDL_FRect rect;
+        SDL_Color color;
+    } bo = {
+        .rect = (SDL_FRect){.x = 50.f, .y = 50.f, .w = 100.f, .h = 100.f},
+        .color = (SDL_Color){.r=255, .g = 0, .b = 255, .a= 255}
+    };
+
+    bard_target_fps(60);
+
+    while (!bard_window_should_close()) {
+
+        // https://wiki.libsdl.org/SDL3/BestKeyboardPractices
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
-                is_running = false;
+                bard_quit_next_frame();
             }
         }
 
-        typedef struct {
-            uint8_t r;
-            uint8_t g;
-            uint8_t b;
-            uint8_t a;
-        } RGBA_Color;
+        float speed = 400.0f;
+        float step_size = speed * bard_dt();
 
-        RGBA_Color PURE_BLACK = (RGBA_Color){.r = 0, .g = 0, .b = 0, .a= 255};
-        SDL_SetRenderDrawColor(renderer, PURE_BLACK.r, PURE_BLACK.g, PURE_BLACK.b, PURE_BLACK.a);
-        SDL_RenderClear(renderer); // clears the renderer with the renderer draw color
+        if (global.kb_state[SDL_SCANCODE_RIGHT]) {
+            if (bo.rect.x + bo.rect.w + step_size <= global.window_width) {
+                bo.rect.x += step_size;
+            }
+        }
+        if (global.kb_state[SDL_SCANCODE_LEFT]) {
+            if (bo.rect.x - step_size >= 0) {
+                bo.rect.x -= step_size;
+            }
+        }
+        if (global.kb_state[SDL_SCANCODE_UP]) {
+            if (bo.rect.y - step_size >= 0 ) {
+                bo.rect.y -= step_size;
+            }
+        }
+        if (global.kb_state[SDL_SCANCODE_DOWN]) {
+            if (bo.rect.y + bo.rect.h + step_size <= global.window_height) {
+                bo.rect.y += step_size;
+            }
+        }
 
-        RGBA_Color PURE_WHITE = (RGBA_Color){.r = 255, .g = 255, .b = 255, .a= 255};
-        SDL_SetRenderDrawColor(renderer, PURE_WHITE.r, PURE_WHITE.g, PURE_WHITE.b, PURE_WHITE.a);
-        constexpr uint64_t text_scale = 2;
-        SDL_SetRenderScale(renderer, text_scale, text_scale);
-        constexpr uint64_t debugtext_charsize = SDL_DEBUG_TEXT_FONT_CHARACTER_SIZE;
-        const char* debugtext_str = "This is pure white text...";
-        uint64_t debugtext_strlen = bard_strlen(debugtext_str);
-        float debugtext_x = ((float)((WINDOW_WIDTH)>>1))/text_scale - (float)((debugtext_strlen*debugtext_charsize)>>1);
-        float debugtext_y = ((float)((WINDOW_HEIGHT)>>1))/text_scale;
-        SDL_RenderDebugText(renderer, debugtext_x, debugtext_y, debugtext_str);
+        bard_begin_drawing();
+        bard_clear_window();
 
-        SDL_SetRenderScale(renderer, 1.0f, 1.0f);
-        SDL_RenderPresent(renderer);
+        bard_draw_rectangle(bo.rect, bo.color);
+
+        bard_end_drawing();
     }
 
-    SDL_DestroyRenderer(renderer);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
+    bard_close_window();
 
     return 0;
 }
