@@ -25,20 +25,20 @@ static struct {
 #define BARD_WRAP static inline
 
 BARD_WRAP void bard_init_window(uint32_t window, uint32_t height, const char* screen_title) {
-    global.window_width = window;
-    global.window_height = height;
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
         SDL_Quit();
     }
-
     if (!SDL_CreateWindowAndRenderer(screen_title, window, height, 0, &global.window, &global.renderer)) {
         SDL_Log("Failed to create window+renderer: %s", SDL_GetError());
         SDL_Quit();
     }
+
+    global.window_width = window;
+    global.window_height = height;
     global.kb_state = SDL_GetKeyboardState(NULL);
     global.target_fps_ns = (uint64_t)(1000000000.0 / 60.f); // aim for 60fps by default
-    global.previous_time_ns = SDL_GetTicksNS();
+    global.previous_time_ns = SDL_GetTicksNS(); // populate prevtime by default for if target_fps isn't called
 }
 
 BARD_WRAP void bard_target_fps(float target_fps) {
@@ -76,9 +76,9 @@ BARD_WRAP void bard_begin_drawing() {
     SDL_SetRenderDrawColor(global.renderer, 0, 0, 0, 255);
 }
 
-BARD_WRAP void bard_draw_rectangle(SDL_FRect rect, SDL_Color color) {
+BARD_WRAP void bard_draw_rectangle(SDL_FRect frect, SDL_Color color) {
     SDL_SetRenderDrawColor(global.renderer, color.r, color.g, color.b, color.a);
-    SDL_RenderRect(global.renderer, &rect);
+    SDL_RenderRect(global.renderer, &(SDL_FRect){.x=frect.x, .y=frect.y, .w=frect.w, .h=frect.h});
 }
 
 BARD_WRAP void bard_end_drawing() {
@@ -96,18 +96,36 @@ BARD_WRAP void bard_close_window() {
     SDL_Quit();
 }
 
+void update_state_from_arrowkey_inputs(SDL_FRect *rect, float step_size) {
+    if (global.kb_state[SDL_SCANCODE_RIGHT]) {
+        if (rect->x + rect->w + step_size <= global.window_width) {
+            rect->x += step_size;
+        }
+    }
+    if (global.kb_state[SDL_SCANCODE_LEFT]) {
+        if (rect->x - step_size >= 0) {
+            rect->x -= step_size;
+        }
+    }
+    if (global.kb_state[SDL_SCANCODE_UP]) {
+        if (rect->y - step_size >= 0 ) {
+            rect->y -= step_size;
+        }
+    }
+    if (global.kb_state[SDL_SCANCODE_DOWN]) {
+        if (rect->y + rect->h + step_size <= global.window_height) {
+            rect->y += step_size;
+        }
+    }
+}
+
 int main()
 {
     bard_init_window(800, 600, "Hello SDL3");
     SDL_Event event = {0};
 
-    struct {
-        SDL_FRect rect;
-        SDL_Color color;
-    } bo = {
-        .rect = (SDL_FRect){.x = 50.f, .y = 50.f, .w = 100.f, .h = 100.f},
-        .color = (SDL_Color){.r=255, .g = 0, .b = 255, .a= 255}
-    };
+    SDL_FRect rect = {.x = 50.f, .y = 50.f, .w = 100.f, .h = 100.f};
+    SDL_Color rectcolor = {.r=255, .g = 0, .b = 255, .a= 255};
 
     bard_target_fps(60);
 
@@ -123,32 +141,11 @@ int main()
         float speed = 400.0f;
         float step_size = speed * bard_dt();
 
-        if (global.kb_state[SDL_SCANCODE_RIGHT]) {
-            if (bo.rect.x + bo.rect.w + step_size <= global.window_width) {
-                bo.rect.x += step_size;
-            }
-        }
-        if (global.kb_state[SDL_SCANCODE_LEFT]) {
-            if (bo.rect.x - step_size >= 0) {
-                bo.rect.x -= step_size;
-            }
-        }
-        if (global.kb_state[SDL_SCANCODE_UP]) {
-            if (bo.rect.y - step_size >= 0 ) {
-                bo.rect.y -= step_size;
-            }
-        }
-        if (global.kb_state[SDL_SCANCODE_DOWN]) {
-            if (bo.rect.y + bo.rect.h + step_size <= global.window_height) {
-                bo.rect.y += step_size;
-            }
-        }
+        update_state_from_arrowkey_inputs(&rect, step_size);
 
         bard_begin_drawing();
-        bard_clear_window();
-
-        bard_draw_rectangle(bo.rect, bo.color);
-
+            bard_clear_window();
+            bard_draw_rectangle(rect, rectcolor);
         bard_end_drawing();
     }
 
