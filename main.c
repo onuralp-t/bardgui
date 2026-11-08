@@ -6,6 +6,7 @@
 #include <stdalign.h>
 
 #include "SDL3/SDL.h" // IWYU pragma: keep
+#include "SDL3_ttf/SDL_ttf.h" // IWYU pragma: keep
 
 static struct {
     SDL_Renderer *renderer;
@@ -29,9 +30,14 @@ BARD_WRAP void bard_init_window(uint32_t window, uint32_t height, const char* sc
         SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
         SDL_Quit();
     }
+    if (!TTF_Init()) {
+        SDL_Log("Failed to initialize SDL_ttf: %s", SDL_GetError());
+        SDL_Quit();
+    }
     if (!SDL_CreateWindowAndRenderer(screen_title, window, height, 0, &global.window, &global.renderer)) {
         SDL_Log("Failed to create window+renderer: %s", SDL_GetError());
         SDL_Quit();
+        TTF_Quit();
     }
 
     global.window_width = window;
@@ -124,6 +130,34 @@ int main()
     bard_init_window(800, 600, "Hello SDL3");
     SDL_Event event = {0};
 
+    const float font_size = 32.0f;
+    TTF_Font *font = TTF_OpenFont("assets/IBM_Plex_Mono/IBMPlexMono-Light.ttf", font_size);
+    if (!font) {
+        SDL_Log("Failed to load font: %s", SDL_GetError());
+    }
+
+    TTF_TextEngine *text_engine = TTF_CreateRendererTextEngine(global.renderer);
+    if (!text_engine) {
+        SDL_Log("Failed to create text engine: %s", SDL_GetError());
+    }
+
+    // passing 0 for length measures a null-terminated string
+    const char *message = "Hello, SDL3 TTF Engine!";
+    TTF_Text *greeting_text = TTF_CreateText(text_engine, font, message, 0);
+    if (!greeting_text) {
+        SDL_Log("Failed to create TTF_Text: %s", SDL_GetError());
+    }
+
+    TTF_SetTextColor(greeting_text, 255, 255, 255, 255);
+
+    int32_t text_width = 0;
+    int32_t text_height = 0;
+    TTF_GetTextSize(greeting_text, &text_width, &text_height);
+
+    int32_t text_width2 = 0;
+    int32_t text_height2 = 0;
+    TTF_GetStringSize(font, "Hello, SDL3 TTF Engine!", 0, &text_width2, &text_height2);
+
     SDL_FRect rect = {.x = 50.f, .y = 50.f, .w = 100.f, .h = 100.f};
     SDL_Color rectcolor = {.r=255, .g = 0, .b = 255, .a= 255};
 
@@ -146,6 +180,11 @@ int main()
         bard_begin_drawing();
             bard_clear_window();
             bard_draw_rectangle(rect, rectcolor);
+
+            TTF_DrawRendererText(greeting_text,
+                (global.window_width - text_width) / 2.0f,
+                (global.window_height - text_height) / 2.0f);
+
         bard_end_drawing();
     }
 
