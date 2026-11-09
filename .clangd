@@ -5,3 +5,5 @@ CompileFlags:
     - "-I./thirdparty/SDL3_ttf-devel-3.2.2-VC/include"
 Completion:
   HeaderInsertion: Never
+Diagnostics:
+  UnusedIncludes: None
