@@ -2,6 +2,6 @@ CompileFlags:
   Add:
     - "-std=c23"
     - "-I./thirdparty/SDL3-devel-3.4.18-VC/include"
-    - "-I./thirdparty/SDL3_ttf-3.2.2/include"
+    - "-I./thirdparty/SDL3_ttf-devel-3.2.2-VC/include"
 Completion:
   HeaderInsertion: Never
